@@ -1,0 +1,10 @@
+# Archivos locales generados durante la preparación y publicación anterior.
+/liga-navidad/
+/.openai/
+/artifacts/
+*.tar.gz
+*.zip
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
