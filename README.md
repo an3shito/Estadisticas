@@ -23,6 +23,8 @@ El calendario comienza el **domingo 22 de noviembre de 2026 con el grupo A**, se
 
 Los dos partidos pendientes de la primera jornada conservan sus fechas originales del 22 y 24 de noviembre hasta que un administrador los reprograme. Los goleadores y porteros de esos partidos todavía no están confirmados. Puedes guardar marcadores sin asignar todos los goles ni seleccionar un portero; las clasificaciones individuales incluyen solo los datos registrados. Los goles asignados a jugadores no pueden superar el marcador del equipo. La sede principal y la de todos los encuentros es siempre **Cancha Municipal**, también en guardados anteriores y copias importadas.
 
+Los cinco turnos se reparten automáticamente con JavaScript: **cada equipo juega una vez en un turno y dos veces en cada uno de los otros cuatro**, sumando sus nueve jornadas. El calendario inicial tampoco repite un turno en jornadas consecutivas. Se conservan los horarios de la primera jornada y Central Club–Calle los Pinos en el tercer turno de la jornada 2. El reparto se aplica una sola vez a los guardados, con copia previa en `copa-navidad-v1-before-turnos-equilibrados`; cambia únicamente las horas y el orden de presentación, sin alterar cruces, fechas ni resultados. Los encuentros ya jugados mantienen sus horarios. Si los horarios registrados impiden completar el reparto, se conservan los datos y se informa en pantalla. Las importaciones y cambios posteriores de un administrador se respetan al recargar.
+
 Las plantillas incluyen nombres provisionales como «Portero» y «Jugador 7»; sustitúyelos desde **Equipos**. Al guardar, corregir o quitar un resultado, JavaScript recalcula las posiciones, puntos, goles, tarjetas y estadísticas de porteros.
 
 Los guardados de la versión anterior reciben esta jornada una sola vez al abrir la página. Antes de actualizarlos, se conserva una copia local en `copa-navidad-v1-before-jornada-1`. Los otros resultados reales se conservan por enfrentamiento y las demostraciones antiguas se reemplazan por los marcadores comunicados. Las correcciones posteriores, los resultados vaciados y las copias importadas explícitamente se respetan al recargar.
@@ -52,6 +54,7 @@ Los porteros se clasifican por goles recibidos por partido, con mínimo de una a
 - `checks/opening-round.test.cjs`: pruebas de la primera jornada, pendientes y conservación de guardados; se ejecutan con `node checks/opening-round.test.cjs`.
 - `checks/schedule.test.cjs`: pruebas de las 18 fechas, alternancia, horarios y conservación de resultados; se ejecutan con `node checks/schedule.test.cjs`.
 - `checks/pairings.test.cjs`: pruebas del ajuste de la jornada 2 del grupo A y migración de resultados por pareja; se ejecutan con `node checks/pairings.test.cjs`.
+- `checks/turns.test.cjs`: reparto de los cinco turnos para los 20 equipos y conservación de horarios jugados; se ejecuta con `node checks/turns.test.cjs`.
 - `checks/access.browser.html` y `checks/access.browser.js`: pruebas de consulta, acceso y bloqueo en un navegador aislado; el ejecutor solicita la contraseña, sin incluirla en los archivos de pruebas.
 - `checks/run_access_checks.py`: ejecuta las pruebas de acceso con Chrome y un servidor local temporal; usa `python checks/run_access_checks.py` e introduce la contraseña cuando la solicite.
 

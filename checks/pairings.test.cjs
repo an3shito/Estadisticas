@@ -2,14 +2,15 @@ const assert=require('node:assert/strict');
 require('../engine.js');
 const E=globalThis.LigaEngine,state=E.createTournamentState();
 const pair=m=>[m.homeId,m.awayId].sort().join('|');
-const second=state.matches.filter(m=>m.group==='A'&&m.round===2);
-assert.deepEqual(second.map(m=>[m.homeId,m.awayId,m.date,m.time]),[
-  ['norte','aurora','2026-11-26','18:00'],
-  ['san-jose','estrella','2026-11-26','18:40'],
-  ['esperanza','pinos','2026-11-26','19:20'],
-  ['central','halcones','2026-11-26','20:00'],
-  ['juventud','valle','2026-11-26','20:40']
+const second=state.matches.filter(m=>m.group==='A'&&m.round===2).sort((a,b)=>a.id.localeCompare(b.id));
+assert.deepEqual(second.map(m=>[m.homeId,m.awayId,m.date]),[
+  ['norte','aurora','2026-11-26'],
+  ['san-jose','estrella','2026-11-26'],
+  ['esperanza','pinos','2026-11-26'],
+  ['central','halcones','2026-11-26'],
+  ['juventud','valle','2026-11-26']
 ]);
+assert.equal(second[2].time,'19:20');
 assert(E.validateState(state).valid);
 for(const group of ['A','B']){
   assert.equal(new Set(state.matches.filter(m=>m.group===group).map(pair)).size,45);

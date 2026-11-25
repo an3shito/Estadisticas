@@ -17,10 +17,12 @@
       const parsed=JSON.parse(raw);
       if(E.validateState(parsed).valid){
         state=E.normalizeVenue(E.upgradePairings(E.upgradeSchedule(E.upgradeOpeningRound(upgradeSavedState(parsed)))));let canSaveUpgrade=true;
+        try{state=E.upgradeTurns(state);}catch(error){loadWarning='Se conservaron los horarios guardados: '+error.message;}
         const backups=[];
         if(state.initialResultsVersion!==parsed.initialResultsVersion)backups.push('-before-jornada-1');
         if(state.scheduleVersion!==parsed.scheduleVersion)backups.push('-before-calendario-2026');
         if(state.pairingsVersion!==parsed.pairingsVersion)backups.push('-before-cruces-jornada-2-a');
+        if(state.turnVersion!==parsed.turnVersion)backups.push('-before-turnos-equilibrados');
         if(backups.length){
           try{for(const suffix of backups)if(localStorage.getItem(KEY+suffix)===null)localStorage.setItem(KEY+suffix,raw);}catch{canSaveUpgrade=false;storageAvailable=false;loadWarning='Los datos se actualizaron en pantalla, pero no se pudo respaldar el guardado anterior. Exporta una copia para conservarlos.';}
         }
@@ -177,7 +179,7 @@
       const updated={...t,name:data.get('name').trim(),short:data.get('short').trim().toUpperCase(),color:data.get('color'),players};const candidate={...state,teams:state.teams.map(o=>o.id===t.id?updated:o)};const validation=E.validateState(candidate);if(!validation.valid){formError(validation.errors[0]);return;}state=candidate;closeModal();persist('Equipo y plantilla actualizados.');
     }
   });
-  $('#import-file').addEventListener('change',async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;if(!requireEditing())return;const session=editSession;pendingImport=null;if(file.size>3*1024*1024){toast('La copia supera el tamaño permitido de 3 MB.');return;}try{const contents=await file.text();if(!canEdit||session!==editSession)return;const parsed=JSON.parse(contents),result=E.validateState(parsed);if(!result.valid){toast('No se pudo importar: '+result.errors[0]);return;}pendingImport={...E.normalizeVenue(upgradeSavedState(parsed)),initialResultsVersion:1,scheduleVersion:1,pairingsVersion:1};confirmAction('import');}catch{if(canEdit&&session===editSession)toast('No se pudo leer el archivo. Selecciona una copia JSON válida.');}});
+  $('#import-file').addEventListener('change',async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;if(!requireEditing())return;const session=editSession;pendingImport=null;if(file.size>3*1024*1024){toast('La copia supera el tamaño permitido de 3 MB.');return;}try{const contents=await file.text();if(!canEdit||session!==editSession)return;const parsed=JSON.parse(contents),result=E.validateState(parsed);if(!result.valid){toast('No se pudo importar: '+result.errors[0]);return;}pendingImport={...E.normalizeVenue(upgradeSavedState(parsed)),initialResultsVersion:1,scheduleVersion:1,pairingsVersion:1,turnVersion:1};confirmAction('import');}catch{if(canEdit&&session===editSession)toast('No se pudo leer el archivo. Selecciona una copia JSON válida.');}});
   function mobileMenu(open){$('#sidebar').classList.toggle('open',open);$('#mobile-backdrop').classList.toggle('visible',open);$('#menu-toggle').setAttribute('aria-expanded',String(open));}
   $('#menu-toggle').addEventListener('click',()=>mobileMenu(!$('#sidebar').classList.contains('open')));$('#mobile-backdrop').addEventListener('click',()=>mobileMenu(false));
   document.addEventListener('keydown',e=>{if(e.key==='Escape')mobileMenu(false);});

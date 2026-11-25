@@ -28,6 +28,74 @@
   const surnames=['López','García','Pérez','Hernández','Martínez','Ramírez','Gómez','Castillo','Morales','Reyes','Méndez','Vásquez','Cruz','Herrera','Flores','Aguilar','Ramos','Ortiz','Molina','Fuentes'];
   const alpha=(a,b)=>a.localeCompare(b,'es');
   const matchMinutes=40,venue='Cancha Municipal';
+  const matchTimes=Object.freeze(['18:00','18:40','19:20','20:00','20:40']);
+  const turnPlans=new Map(),turnPermutations=[];
+  (function permute(used,values){
+    if(values.length===5){turnPermutations.push(values);return;}
+    for(let i=0;i<5;i++)if(!(used&(1<<i)))permute(used|(1<<i),[...values,i]);
+  })(0,[]);
+  function balancedTurns(matches,group){
+    const teams=[...new Set(matches.flatMap(m=>[m.homeId,m.awayId]))].sort(alpha),index=new Map(teams.map((id,i)=>[id,i]));
+    const rounds=Array.from({length:9},(_,r)=>matches.filter(m=>m.round===r+1).sort((a,b)=>alpha(a.id,b.id)));
+    const edges=rounds.map(games=>games.map(m=>[index.get(m.homeId),index.get(m.awayId)]));
+    const fixed=rounds.map(games=>games.map(m=>{
+      let turn=-1;
+      if(m.round===1||m.played){turn=matchTimes.indexOf(m.time);if(turn<0)throw new Error('Hay un partido jugado o de la primera jornada con un horario fuera de los cinco turnos.');}
+      if(group==='A'&&m.round===2&&pairKey(m.homeId,m.awayId)===pairKey('esperanza','pinos')){
+        if(turn>=0&&turn!==2)throw new Error('Central Club–Calle los Pinos ya tiene un resultado registrado en otro turno.');
+        turn=2;
+      }
+      return turn;
+    }));
+    const key=JSON.stringify([edges,fixed]);
+    let plan=turnPlans.get(key);
+    if(!plan){
+      const counts=teams.map(()=>Array(5).fill(0)),assigned=Array(9).fill(null),teamTurn=Array.from({length:9},()=>Array(10).fill(-1));
+      let nodes=0;
+      function apply(r,p,delta){
+        for(let i=0;i<5;i++)for(const t of edges[r][i]){counts[t][p[i]]+=delta;teamTurn[r][t]=delta>0?p[i]:-1;}
+        assigned[r]=delta>0?p:null;
+      }
+      function candidates(r,avoidAdjacent){
+        const choices=[];
+        for(const p of turnPermutations){
+          if(p.some((turn,i)=>fixed[r][i]>=0&&turn!==fixed[r][i]))continue;
+          let score=0,valid=true;
+          for(let i=0;i<5&&valid;i++)for(const t of edges[r][i]){
+            if(counts[t][p[i]]>=2){valid=false;break;}
+            const adjacent=(r>0&&teamTurn[r-1][t]===p[i])||(r<8&&teamTurn[r+1][t]===p[i]);
+            if(avoidAdjacent&&adjacent){valid=false;break;}
+            score+=counts[t][p[i]]*2+(adjacent?100:0);
+          }
+          if(valid)choices.push({p,score});
+        }
+        return choices.sort((a,b)=>a.score-b.score);
+      }
+      function visit(left,avoidAdjacent){
+        if(!left)return true;
+        if(++nodes>25000)return false;
+        let selected=-1,options=null;
+        // Elegir primero la jornada con menos órdenes posibles reduce la búsqueda.
+        for(let r=0;r<9;r++)if(!assigned[r]){
+          const choices=candidates(r,avoidAdjacent);if(!choices.length)return false;
+          if(!options||choices.length<options.length){selected=r;options=choices;}
+        }
+        for(const {p} of options){apply(selected,p,1);if(visit(left-1,avoidAdjacent))return true;apply(selected,p,-1);}
+        return false;
+      }
+      if(!visit(9,true)){nodes=0;if(!visit(9,false))throw new Error('No se encontró un reparto de una o dos apariciones por turno compatible con los horarios ya jugados.');}
+      // Nueve partidos y un máximo de dos en cada turno obligan a usar los cinco.
+      if(!counts.every(row=>row.every(n=>n===1||n===2)))throw new Error('La distribución de turnos no es válida.');
+      plan=assigned.map(p=>p.slice());turnPlans.set(key,plan);
+    }
+    return new Map(rounds.flatMap((games,r)=>games.map((m,i)=>[m.id,matchTimes[plan[r][i]]])));
+  }
+  function upgradeTurns(state){
+    if(state.turnVersion>=1)return state;
+    const times=new Map(['A','B'].flatMap(group=>[...balancedTurns(state.matches.filter(m=>m.group===group),group)]));
+    const matches=state.matches.map(m=>m.time===times.get(m.id)?m:{...m,time:times.get(m.id)}).sort((a,b)=>alpha(a.date||'',b.date||'')||alpha(a.time||'',b.time||'')||alpha(a.id,b.id));
+    return {...state,turnVersion:1,matches};
+  }
   function normalizeVenue(state){
     const tournament=state.tournament.venue===venue?state.tournament:{...state.tournament,venue};
     const matches=state.matches.map(match=>match.venue===venue?match:{...match,venue});
@@ -68,7 +136,7 @@
         rotation=[rotation[0],rotation[9],...rotation.slice(1,-1)];
       }
     }
-    return upgradeSchedule({version:1,initialResultsVersion:1,pairingsVersion:1,demo:false,tournament:{name:'Campeonato Municipal',season:'2026',venue},teams,matches});
+    return upgradeTurns(upgradeSchedule({version:1,initialResultsVersion:1,pairingsVersion:1,demo:false,tournament:{name:'Campeonato Municipal',season:'2026',venue},teams,matches}));
   }
   function upgradePairings(state){
     if(state.pairingsVersion>=1)return state;
@@ -200,5 +268,5 @@
     });for(const g of ['A','B'])for(let r=1;r<=9;r++)check(counts.get(g+'|'+r)===5,`Grupo ${g}, jornada ${r}: debe haber 5 partidos.`);
     return {valid:errors.length===0,errors};
   }
-  root.LigaEngine=Object.freeze({createDemoState,createBlankState,createTournamentState,upgradeOpeningRound,upgradeSchedule,upgradePairings,normalizeVenue,matchMinutes,venue,migrateTeamNames,standings,scorers,discipline,goalkeepers,findPlayer,validateState});
+  root.LigaEngine=Object.freeze({createDemoState,createBlankState,createTournamentState,upgradeOpeningRound,upgradeSchedule,upgradePairings,upgradeTurns,normalizeVenue,matchMinutes,matchTimes,venue,migrateTeamNames,standings,scorers,discipline,goalkeepers,findPlayer,validateState});
 })(globalThis);

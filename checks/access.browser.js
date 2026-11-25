@@ -19,7 +19,7 @@
     const response=await fetch('/__test_password');
     if(!response.ok)throw new Error('Ejecuta estas pruebas con python checks/run_access_checks.py.');
     const password=await response.text();
-    for(const key of [KEY,KEY+'-before-jornada-1',KEY+'-before-calendario-2026',KEY+'-before-cruces-jornada-2-a'])localStorage.removeItem(key);
+    for(const key of [KEY,KEY+'-before-jornada-1',KEY+'-before-calendario-2026',KEY+'-before-cruces-jornada-2-a',KEY+'-before-turnos-equilibrados'])localStorage.removeItem(key);
     await load(()=>{frame.src='../index.html';});
     const initial=snapshot(),first=read().matches[0];
     check(doc().querySelector('#settings-button').hidden,'Configuración oculta sin acceso');
@@ -95,7 +95,7 @@
     await login(password);
     let resolveFile;
     const importInput=doc().querySelector('#import-file'),copy=frame.contentWindow.LigaEngine.createDemoState();
-    delete copy.scheduleVersion;copy.matches[0].date='2027-01-03';copy.matches[0].time='19:10';
+    delete copy.scheduleVersion;delete copy.turnVersion;copy.matches[0].date='2027-01-03';copy.matches[0].time='19:10';
     Object.defineProperty(importInput,'files',{configurable:true,value:[{size:1000,text:()=>new Promise(resolve=>{resolveFile=resolve;})}]});
     importInput.dispatchEvent(new frame.contentWindow.Event('change',{bubbles:true}));
     action('lock-editing');await login(password);resolveFile(JSON.stringify(copy));
@@ -118,7 +118,7 @@
     check(read().matches[0].date==='2027-01-03'&&read().matches[0].time==='19:10','Una copia importada conserva sus fechas al recargar');
     check(frame.contentWindow.localStorage.length===1&&frame.contentWindow.sessionStorage.length===0,'No se persisten credenciales ni permisos');
     check(!JSON.stringify(read()).includes(password),'La contraseña no forma parte de los datos');
-    const legacy=frame.contentWindow.LigaEngine.createTournamentState();delete legacy.scheduleVersion;delete legacy.pairingsVersion;
+    const legacy=frame.contentWindow.LigaEngine.createTournamentState();delete legacy.scheduleVersion;delete legacy.pairingsVersion;delete legacy.turnVersion;
     let rotation=['aurora','esperanza','central','pinos','juventud','halcones','valle','estrella','norte','san-jose'];
     for(let round=1;round<=9;round++){
       if(round>1)for(let slot=0;slot<5;slot++){
@@ -132,8 +132,11 @@
     await load(()=>frame.contentWindow.location.reload());
     check(frame.contentWindow.localStorage.getItem(KEY+'-before-calendario-2026')===oldSaved,'Se respalda el guardado antes de actualizar fechas');
     check(frame.contentWindow.localStorage.getItem(KEY+'-before-cruces-jornada-2-a')===oldSaved,'Se respalda el guardado antes de actualizar los cruces');
+    check(frame.contentWindow.localStorage.getItem(KEY+'-before-turnos-equilibrados')===oldSaved,'Se respalda el guardado antes de repartir turnos');
     const changed=read().matches.find(m=>m.id==='m-a-2-3');
     check(changed.homeId==='esperanza'&&changed.awayId==='pinos'&&changed.time==='19:20','Los guardados anteriores reciben el cruce solicitado en J2/A');
+    const balanced=read();
+    check(balanced.teams.every(team=>['18:00','18:40','19:20','20:00','20:40'].every(time=>{const count=balanced.matches.filter(m=>(m.homeId===team.id||m.awayId===team.id)&&m.time===time).length;return count===1||count===2;})),'Los veinte equipos usan cada turno una o dos veces después de migrar');
     check(read().matches[0].date==='2026-11-22'&&read().matches[5].date==='2026-11-24','El guardado anterior recibe las fechas correctas');
     check(read().matches.filter(m=>m.played).length===8&&read().matches.filter(m=>m.round===1&&!m.played).length===2,'La actualización conserva ocho resultados y dos pendientes');
     const migrated=snapshot();await load(()=>frame.contentWindow.location.reload());
