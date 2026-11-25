@@ -1,34 +1,131 @@
 /* Motor independiente: calendario de una vuelta, resultados y clasificaciones.
-   validateState devuelve { valid, errors }. Los datos de ejemplo son ficticios. */
+   validateState devuelve { valid, errors }. La demostración usa resultados ficticios. */
 (function(root){
   'use strict';
   const definitions=[
-    ['aurora','Aurora FC','AUR','#b59632','A'],['san-jose','Deportivo San José','SJO','#3a68a4','A'],['norte','Atlético Norte','NOR','#aa5d4c','A'],['esperanza','Real Esperanza','ESP','#36825c','A'],['central','Unión Central','UCE','#8464a7','A'],['estrella','Estrella Roja','ERO','#b84d55','A'],['pinos','Los Pinos','PIN','#417d55','A'],['valle','Sporting del Valle','VAL','#c28a42','A'],['juventud','Juventud Victoria','JUV','#4b929d','A'],['halcones','Halcones FC','HAL','#526682','A'],
-    ['santa-cruz','Deportivo Santa Cruz','SCZ','#4c7db4','B'],['sur','Atlético del Sur','SUR','#b15d4c','B'],['san-miguel','Real San Miguel','RSM','#4d8a7c','B'],['flores','Unión Las Flores','FLO','#9a72ac','B'],['racing','Racing Municipal','RAC','#bd913c','B'],['condores','Cóndores FC','CON','#687681','B'],['titanes','Titanes de Oriente','TIT','#4c7ca4','B'],['olimpico','Olímpico FC','OLI','#569876','B'],['aguilas','Águilas Doradas','AGU','#ad8d35','B'],['independiente','Independiente','IND','#a9657e','B']
+    ['aurora','Real Aurora','AUR','#b59632','A'],['san-jose','Los Amigos','AMI','#3a68a4','A'],['norte','Fer. La Esperanza','ESP','#aa5d4c','A'],['esperanza','Central Club','CEN','#36825c','A'],['central','Auto. Rep. San Francisco','SFR','#8464a7','A'],['estrella','Club TK','TK','#b84d55','A'],['pinos','Calle los Pinos','PIN','#417d55','A'],['valle','Grupo Master','MAS','#c28a42','A'],['juventud','Cachorros FC','CAC','#4b929d','A'],['halcones','Celajes FC','CEL','#526682','A'],
+    ['santa-cruz','Los Brothers','BRO','#4c7db4','B'],['sur','Las Palmas','PAL','#b15d4c','B'],['san-miguel','La Gran Manzana','MAN','#4d8a7c','B'],['flores','Auto Rep. JR','JR','#9a72ac','B'],['racing','Fer. Velazquez','VEL','#bd913c','B'],['condores','Los Panas','PAN','#687681','B'],['titanes','Los Primos','PRI','#4c7ca4','B'],['olimpico','Shulú','SHU','#569876','B'],['aguilas','Real X','RX','#ad8d35','B'],['independiente','Rep. Tel. y Radiadores Velazquez.','RAV','#a9657e','B']
   ];
+  // Se mantienen los IDs para conservar referencias de calendarios y copias anteriores.
+  const legacyLabels=[
+    ['Aurora FC','AUR'],['Deportivo San José','SJO'],['Atlético Norte','NOR'],['Real Esperanza','ESP'],['Unión Central','UCE'],['Estrella Roja','ERO'],['Los Pinos','PIN'],['Sporting del Valle','VAL'],['Juventud Victoria','JUV'],['Halcones FC','HAL'],
+    ['Deportivo Santa Cruz','SCZ'],['Atlético del Sur','SUR'],['Real San Miguel','RSM'],['Unión Las Flores','FLO'],['Racing Municipal','RAC'],['Cóndores FC','CON'],['Titanes de Oriente','TIT'],['Olímpico FC','OLI'],['Águilas Doradas','AGU'],['Independiente','IND']
+  ];
+  const openingRound={
+    A:[['aurora','san-jose',2,1],['norte','esperanza',8,2],['central','estrella',4,2],['valle','pinos',3,0],['juventud','halcones',null,null]],
+    B:[['santa-cruz','sur',1,1],['racing','condores',4,1],['san-miguel','flores',2,1],['olimpico','titanes',1,1],['aguilas','independiente',null,null]]
+  };
+  const pairKey=(a,b)=>[a,b].sort().join('|');
+  function migrateTeamNames(state){
+    const teams=state.teams.map(team=>{
+      const i=definitions.findIndex(([id,,,,group])=>team.id===id&&team.group===group);
+      if(i<0||team.name!==legacyLabels[i][0])return team;
+      return {...team,name:definitions[i][1],short:team.short===legacyLabels[i][1]?definitions[i][2]:team.short};
+    });
+    return teams.some((team,i)=>team!==state.teams[i])?{...state,teams}:state;
+  }
   const names=['Luis','Carlos','José','Diego','Andrés','Javier','Pablo','Miguel','Daniel','Óscar','Kevin','Sergio','Mario','Ángel','Marco','David','Juan','Emilio','Hugo','Fernando'];
   const surnames=['López','García','Pérez','Hernández','Martínez','Ramírez','Gómez','Castillo','Morales','Reyes','Méndez','Vásquez','Cruz','Herrera','Flores','Aguilar','Ramos','Ortiz','Molina','Fuentes'];
   const alpha=(a,b)=>a.localeCompare(b,'es');
+  const matchMinutes=40,venue='Cancha Municipal';
+  function normalizeVenue(state){
+    const tournament=state.tournament.venue===venue?state.tournament:{...state.tournament,venue};
+    const matches=state.matches.map(match=>match.venue===venue?match:{...match,venue});
+    return tournament!==state.tournament||matches.some((match,i)=>match!==state.matches[i])?{...state,tournament,matches}:state;
+  }
+  function upgradeSchedule(state){
+    if(state.scheduleVersion>=1)return state;
+    const dates=[],day=new Date('2026-11-22T00:00:00Z');
+    while(dates.length<18){
+      if([0,2,4].includes(day.getUTCDay()))dates.push(day.toISOString().slice(0,10));
+      day.setUTCDate(day.getUTCDate()+1);
+    }
+    const slots=new Map();
+    const matches=state.matches.slice().sort((a,b)=>a.round-b.round||alpha(a.group,b.group)||alpha(a.id,b.id)).map(match=>{
+      const key=match.group+'|'+match.round,slot=slots.get(key)||0;
+      slots.set(key,slot+1);
+      const minutes=18*60+slot*matchMinutes;
+      return {...match,date:dates[(match.round-1)*2+(match.group==='B'?1:0)],time:`${String(Math.floor(minutes/60)).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`};
+    }).sort((a,b)=>alpha(a.date,b.date)||alpha(a.time,b.time)||alpha(a.id,b.id));
+    return {...state,scheduleVersion:1,matches};
+  }
   function createBlankState(){
-    const teams=definitions.map(([id,name,short,color,group],i)=>({id,name,short,color,group,players:[1,7,9,10,11].map((number,j)=>({id:id+'-p'+(j+1),name:names[(i*3+j*7)%20]+' '+surnames[(i+j*3)%20],number,position:j===0?'goalkeeper':'player'}))}));
+    const teams=definitions.map(([id,name,short,color,group])=>({id,name,short,color,group,players:[1,7,9,10,11].map((number,j)=>({id:id+'-p'+(j+1),name:j===0?'Portero':'Jugador '+number,number,position:j===0?'goalkeeper':'player'}))}));
     const matches=[];
     for(const group of ['A','B']){
-      let rotation=teams.filter(t=>t.group===group).map(t=>t.id);
+      let rotation=Array(10);
+      openingRound[group].forEach(([homeId,awayId],slot)=>{rotation[slot]=slot%2?awayId:homeId;rotation[9-slot]=slot%2?homeId:awayId;});
+      // Invertir este par conserva sus rivales de J1 y lleva Central Club–Pinos a J2/P3.
+      if(group==='A')[rotation[3],rotation[6]]=[rotation[6],rotation[3]];
       for(let round=1;round<=9;round++){
         for(let slot=0;slot<5;slot++){
           let homeId=rotation[slot],awayId=rotation[9-slot];
           if((round+slot)%2===0)[homeId,awayId]=[awayId,homeId];
-          matches.push({id:`m-${group.toLowerCase()}-${round}-${slot+1}`,round,group,homeId,awayId,date:new Date(Date.UTC(2026,10,7+(round-1)*7)).toISOString().slice(0,10),time:['12:00','14:00','16:00','18:00','20:00'][slot],venue:'Estadio Municipal · Cancha '+(group==='A'?1:2),played:false,homeScore:null,awayScore:null,events:[],homeKeeperId:homeId+'-p1',awayKeeperId:awayId+'-p1'});
+          if(round===1)[homeId,awayId]=openingRound[group][slot];
+          else if(group==='A'&&round===2&&slot===2)[homeId,awayId]=[awayId,homeId];
+          matches.push({id:`m-${group.toLowerCase()}-${round}-${slot+1}`,round,group,homeId,awayId,date:null,time:null,venue,played:false,homeScore:null,awayScore:null,events:[],homeKeeperId:null,awayKeeperId:null});
         }
         rotation=[rotation[0],rotation[9],...rotation.slice(1,-1)];
       }
     }
-    matches.sort((a,b)=>a.round-b.round||alpha(a.time,b.time)||alpha(a.group,b.group));
-    return {version:1,demo:false,tournament:{name:'Copa Navidad',season:'2026',venue:'Estadio Municipal'},teams,matches};
+    return upgradeSchedule({version:1,initialResultsVersion:1,pairingsVersion:1,demo:false,tournament:{name:'Campeonato Municipal',season:'2026',venue},teams,matches});
+  }
+  function upgradePairings(state){
+    if(state.pairingsVersion>=1)return state;
+    if(!definitions.filter(([, , , ,group])=>group==='A').every(([id])=>state.teams.some(t=>t.id===id&&t.group==='A')))return {...state,pairingsVersion:1};
+    const planned=new Map(createBlankState().matches.filter(m=>m.group==='A'&&m.round>1).map(m=>[m.id,m]));
+    const previous=new Map(state.matches.filter(m=>m.group==='A').map(m=>[pairKey(m.homeId,m.awayId),m]));
+    const counts=new Map(),replacements=new Map();
+    state.matches.filter(m=>m.group==='A'&&m.round>1).slice().sort((a,b)=>a.round-b.round||alpha(a.id,b.id)).forEach(m=>{
+      const slot=(counts.get(m.round)||0)+1;counts.set(m.round,slot);
+      replacements.set(m.id,planned.get(`m-a-${m.round}-${slot}`));
+    });
+    const matches=state.matches.map(slot=>{
+      if(slot.group!=='A'||slot.round===1)return slot;
+      const scheduled=replacements.get(slot.id),old=previous.get(pairKey(scheduled.homeId,scheduled.awayId));
+      const sameHome=old.homeId===scheduled.homeId;
+      return {...slot,homeId:scheduled.homeId,awayId:scheduled.awayId,played:old.played,events:old.events,
+        homeScore:sameHome?old.homeScore:old.awayScore,awayScore:sameHome?old.awayScore:old.homeScore,
+        homeKeeperId:sameHome?old.homeKeeperId:old.awayKeeperId,awayKeeperId:sameHome?old.awayKeeperId:old.homeKeeperId,
+        ...(old.played?{date:old.date,time:old.time,venue:old.venue}:{})};
+    });
+    return {...state,pairingsVersion:1,matches};
+  }
+  function seedOpeningRound(state){
+    const previous=new Map(state.matches.map(m=>[pairKey(m.homeId,m.awayId),m]));
+    const matches=createBlankState().matches.map(scheduled=>{
+      const old=state.demo?null:previous.get(pairKey(scheduled.homeId,scheduled.awayId));
+      let match=scheduled;
+      if(old){
+        const sameHome=old.homeId===scheduled.homeId;
+        match={...old,...scheduled,date:old.date,time:old.time,venue:old.venue,played:old.played,events:old.events,
+          homeScore:sameHome?old.homeScore:old.awayScore,awayScore:sameHome?old.awayScore:old.homeScore,
+          homeKeeperId:sameHome?old.homeKeeperId:old.awayKeeperId,awayKeeperId:sameHome?old.awayKeeperId:old.homeKeeperId};
+      }
+      if(scheduled.round!==1)return match;
+      const result=openingRound[scheduled.group].find(([homeId,awayId])=>homeId===scheduled.homeId&&awayId===scheduled.awayId);
+      const [, ,homeScore,awayScore]=result,played=homeScore!==null;
+      let events=old?.played&&played?old.events:[];
+      // Conserva los detalles ya registrados cuando caben en el marcador corregido.
+      const goalsFor=id=>events.filter(e=>state.teams.find(t=>t.id===id).players.some(p=>p.id===e.playerId)).reduce((sum,e)=>sum+e.goals,0);
+      const excess=new Set([[scheduled.homeId,homeScore],[scheduled.awayId,awayScore]].filter(([id,score])=>goalsFor(id)>(score??0)).flatMap(([id])=>state.teams.find(t=>t.id===id).players.map(p=>p.id)));
+      if(excess.size)events=events.map(e=>excess.has(e.playerId)?{...e,goals:0}:e).filter(e=>e.goals||e.yellow||e.red);
+      return {...match,date:old?.played?old.date:scheduled.date,time:old?.played?old.time:scheduled.time,venue:old?.played?old.venue:venue,
+        played,homeScore,awayScore,events,homeKeeperId:old?.played&&played?match.homeKeeperId:null,awayKeeperId:old?.played&&played?match.awayKeeperId:null};
+    });
+    return {...state,initialResultsVersion:1,demo:false,matches};
+  }
+  function createTournamentState(){return seedOpeningRound(createBlankState());}
+  function upgradeOpeningRound(state){
+    if(state.initialResultsVersion>=1)return state;
+    if(!definitions.every(([id,,,,group])=>state.teams.some(t=>t.id===id&&t.group===group)))return {...state,initialResultsVersion:1};
+    return seedOpeningRound(state);
   }
   function createDemoState(){
     const state=createBlankState();state.demo=true;
+    state.teams.forEach((team,i)=>team.players.forEach((player,j)=>{player.name=names[(i*3+j*7)%20]+' '+surnames[(i+j*3)%20];}));
     state.matches.forEach((m,i)=>{
+      m.homeKeeperId=m.homeId+'-p1';m.awayKeeperId=m.awayId+'-p1';
       if(m.round>4)return;
       let seed=Math.imul(i+1+m.round*97,0x9e3779b1)>>>0;
       const random=()=>{seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;return(seed>>>0)/4294967296;};
@@ -42,7 +139,7 @@
       });m.events=[...map.values()];
     });return state;
   }
-  function played(state){return state.matches.filter(m=>m.played).slice().sort((a,b)=>alpha(a.date,b.date)||alpha(a.time,b.time)||a.round-b.round||alpha(a.id,b.id));}
+  function played(state){return state.matches.filter(m=>m.played).slice().sort((a,b)=>alpha(a.date||'',b.date||'')||alpha(a.time||'',b.time||'')||a.round-b.round||alpha(a.id,b.id));}
   function playerIndex(state){return new Map(state.teams.flatMap(team=>team.players.map(player=>[player.id,{player,team}])));}
   function findPlayer(state,id){return playerIndex(state).get(id)||null;}
   function standings(state,group){
@@ -83,14 +180,14 @@
       const label=`Partido ${i+1}: `;if(!record(m)){errors.push(label+'datos no válidos.');return;}
       check(text(m.id)&&!ids.has(m.id),label+'identificador inválido o repetido.');ids.add(m.id);
       check(integer(m.round,1,9)&&['A','B'].includes(m.group),label+'jornada o grupo no válido.');
-      let dateValid=false;try{dateValid=/^\d{4}-\d{2}-\d{2}$/.test(m.date)&&new Date(m.date+'T00:00:00Z').toISOString().slice(0,10)===m.date;}catch{}
-      check(dateValid&&/^([01]\d|2[0-3]):[0-5]\d$/.test(m.time)&&text(m.venue,150),label+'fecha, hora o sede no válida.');
+      let dateValid=m.date===null;try{if(m.date!==null)dateValid=/^\d{4}-\d{2}-\d{2}$/.test(m.date)&&new Date(m.date+'T00:00:00Z').toISOString().slice(0,10)===m.date;}catch{}
+      check(dateValid&&(m.time===null||/^([01]\d|2[0-3]):[0-5]\d$/.test(m.time))&&text(m.venue,150),label+'fecha, hora o sede no válida.');
       const home=teams.get(m.homeId),away=teams.get(m.awayId);
       check(home&&away&&home.id!==away.id&&home.group===m.group&&away.group===m.group,label+'equipos o grupo no válidos.');
       const pair=[m.homeId,m.awayId].sort().join('|');check(!pairs.has(pair),label+'enfrentamiento repetido.');pairs.add(pair);
       [m.homeId,m.awayId].forEach(id=>{const key=id+'|'+m.round;check(!rounds.has(key),label+'equipo repetido en la jornada.');rounds.add(key);});
       const key=m.group+'|'+m.round;counts.set(key,(counts.get(key)||0)+1);
-      [['homeKeeperId',m.homeId],['awayKeeperId',m.awayId]].forEach(([prop,id])=>{const p=players.get(m[prop]);check(p&&p.team.id===id&&p.player.position==='goalkeeper',label+'portero no válido.');});
+      [['homeKeeperId',m.homeId],['awayKeeperId',m.awayId]].forEach(([prop,id])=>{const p=players.get(m[prop]);check(m[prop]===null||(p&&p.team.id===id&&p.player.position==='goalkeeper'),label+'portero no válido.');});
       check(typeof m.played==='boolean',label+'estado no válido.');
       check(m.played?(integer(m.homeScore,0,50)&&integer(m.awayScore,0,50)):(m.homeScore===null&&m.awayScore===null),label+'marcador no válido.');
       if(!Array.isArray(m.events)||m.events.length>100){errors.push(label+'eventos no válidos.');return;}
@@ -99,9 +196,9 @@
         check(p&&(p.team.id===m.homeId||p.team.id===m.awayId)&&!seen.has(e.playerId),label+'jugador de evento inválido o repetido.');seen.add(e.playerId);
         check(integer(e.goals,0,50)&&integer(e.yellow,0,2)&&integer(e.red,0,1),label+'goles o tarjetas no válidos.');
         if(p&&integer(e.goals,0,50)){if(p.team.id===m.homeId)hg+=e.goals;if(p.team.id===m.awayId)ag+=e.goals;}
-      });if(m.played)check(hg===m.homeScore&&ag===m.awayScore,label+'los goles de los jugadores deben sumar el marcador.');
+      });if(m.played)check(hg<=m.homeScore&&ag<=m.awayScore,label+'los goles asignados a jugadores no pueden superar el marcador.');
     });for(const g of ['A','B'])for(let r=1;r<=9;r++)check(counts.get(g+'|'+r)===5,`Grupo ${g}, jornada ${r}: debe haber 5 partidos.`);
     return {valid:errors.length===0,errors};
   }
-  root.LigaEngine=Object.freeze({createDemoState,createBlankState,standings,scorers,discipline,goalkeepers,findPlayer,validateState});
+  root.LigaEngine=Object.freeze({createDemoState,createBlankState,createTournamentState,upgradeOpeningRound,upgradeSchedule,upgradePairings,normalizeVenue,matchMinutes,venue,migrateTeamNames,standings,scorers,discipline,goalkeepers,findPlayer,validateState});
 })(globalThis);
